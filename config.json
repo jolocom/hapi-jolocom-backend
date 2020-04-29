@@ -1,0 +1,16 @@
+{
+  "mnemonic": "remain cook bonus salad stand tenant shove outdoor scheme cigar tape where",
+  "verifierOptions": [
+    {
+      "name": "my_cred_request",
+      "requirements": [
+        {
+          "type": ["email"],
+          "constraints": []
+        }
+      ],
+      "integration": "https://your.integration.service"
+    }
+  ],
+  "issuerOptions": []
+}
