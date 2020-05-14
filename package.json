@@ -7,9 +7,14 @@
   "license": "MIT",
   "private": false,
   "devDependencies": {
+    "tslib": "^2.0.0",
     "typescript": "^3.8.3"
   },
   "dependencies": {
-    "hapi": "^18.1.0"
+    "@jolocom/sdk": "^0.7.0",
+    "@jolocom/sdk-storage-typeorm": "^1.1.0",
+    "hapi": "^18.1.0",
+    "hapi-jolocom-plugin": "../hapi-jolocom-plugin/hapi-jolocom-plugin-0.2.0.tgz",
+    "typeorm": "^0.2.24"
   }
 }
