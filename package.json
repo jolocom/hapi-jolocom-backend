@@ -6,6 +6,9 @@
   "author": "Charles Cunningham",
   "license": "MIT",
   "private": false,
+  "scripts": {
+    "start": "ts-node ./src/index"
+  },
   "devDependencies": {
     "tslib": "^2.0.0",
     "typescript": "^3.8.3"

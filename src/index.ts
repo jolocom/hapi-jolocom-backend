@@ -1,7 +1,7 @@
 import * as hapi from 'hapi'
-import { sdkPlugin } from "hapi-jolocom-plugin"
-import { FilePasswordStore } from "@jolocom/sdk"
+import { FilePasswordStore, JolocomSDK } from "@jolocom/sdk"
 import { JolocomTypeormStorage } from "@jolocom/sdk-storage-typeorm"
+import { rpcProxyPlugin } from './rpc'
 const typeorm = require("typeorm")
 
 const typeormConfig = {
@@ -22,29 +22,28 @@ export const init = async () => {
   const connection = await typeorm.createConnection(typeormConfig)
   const storage = new JolocomTypeormStorage(connection)
 
+  const sdk = new JolocomSDK({
+    storage,
+    passwordStore
+  })
+
+  const port = process.env.PUBLIC_PORT || 9000;
+  await sdk.init()
+
   const server = new hapi.Server({
     host: "localhost",
-    port: process.env.PUBLIC_PORT || 9000,
+    port,
     debug: {
       request: "*"
     }
   });
 
   await server.register({
-    plugin: sdkPlugin,
-    options: { identityData: {
-      storage, passwordStore
-    },
-    verifierOptions: [{
-      name: "TEST",
-      requirements: [
-        {
-          type: ["email"],
-          constraints: []
-        }
-      ],
-    }
-  ],
+    plugin: rpcProxyPlugin,
+    options: {
+      sdk,
+      path: 'wallet/abcd', // TODO random
+      server
     }
   });
 
@@ -53,3 +52,19 @@ export const init = async () => {
 };
 
 init();
+
+//  plugin: sdkPlugin,
+//  options: { identityData: {
+//    storage, passwordStore
+//  },
+//  verifierOptions: [{
+//    name: "TEST",
+//    requirements: [
+//      {
+//        type: ["email"],
+//        constraints: []
+//      }
+//    ],
+//  }
+//],
+//  }
