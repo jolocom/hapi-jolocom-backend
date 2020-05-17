@@ -1,7 +1,9 @@
-import * as hapi from 'hapi'
+import * as hapi from '@hapi/hapi'
 import { FilePasswordStore, JolocomSDK } from "@jolocom/sdk"
 import { JolocomTypeormStorage } from "@jolocom/sdk-storage-typeorm"
 import { rpcProxyPlugin } from './rpc'
+import { issueAndVerifiyPlugin } from 'hapi-jolocom-plugin'
+import { createServer } from 'http'
 const typeorm = require("typeorm")
 
 const typeormConfig = {
@@ -16,6 +18,7 @@ const typeormConfig = {
     migrationsDir: __dirname + '/migrations',
   }
 }
+console.log(__dirname)
 
 export const init = async () => {
   const passwordStore = new FilePasswordStore(__dirname+'/password.txt')
@@ -30,41 +33,42 @@ export const init = async () => {
   const port = process.env.PUBLIC_PORT || 9000;
   await sdk.init()
 
+  // const nodeListener = createServer()
+
   const server = new hapi.Server({
-    host: "localhost",
     port,
     debug: {
-      request: "*"
-    }
+      request: ["*"]
+    },
+    // listener: nodeListener
   });
 
-  await server.register({
+  // server.bind(sdk)
+
+  await server.register([{
+    plugin: issueAndVerifiyPlugin,
+    options: { 
+      sdk,
+      verifierConfig: [{
+        name: "verifier",
+        requirements: [ { type: ["email"], constraints: [] }
+        ],
+      }]
+    }
+  }])
+
+
+  await server.register([{
     plugin: rpcProxyPlugin,
     options: {
       sdk,
-      path: 'wallet/abcd', // TODO random
+      path: '/wallet/abcd', // TODO random
       server
     }
-  });
+  }]);
 
   await server.start();
   console.log("running")
 };
 
 init();
-
-//  plugin: sdkPlugin,
-//  options: { identityData: {
-//    storage, passwordStore
-//  },
-//  verifierOptions: [{
-//    name: "TEST",
-//    requirements: [
-//      {
-//        type: ["email"],
-//        constraints: []
-//      }
-//    ],
-//  }
-//],
-//  }

@@ -10,14 +10,16 @@
     "start": "ts-node ./src/index"
   },
   "devDependencies": {
+    "@types/hapi__hapi": "18.2.6",
+    "@types/ws": "^7.2.4",
     "tslib": "^2.0.0",
     "typescript": "^3.8.3"
   },
   "dependencies": {
-    "@jolocom/sdk": "^0.7.0",
+    "@hapi/hapi": "^18.4.1",
+    "@jolocom/sdk": "^0.9.0",
     "@jolocom/sdk-storage-typeorm": "^1.1.0",
-    "hapi": "^18.1.0",
-    "hapi-jolocom-plugin": "../hapi-jolocom-plugin/hapi-jolocom-plugin-0.2.0.tgz",
+    "jolocom-lib": "^4.2.8",
     "typeorm": "^0.2.24"
   }
 }
