@@ -2,7 +2,6 @@ import * as hapi from '@hapi/hapi'
 import { FilePasswordStore, JolocomSDK } from "@jolocom/sdk"
 import { JolocomTypeormStorage } from "@jolocom/sdk-storage-typeorm"
 import { rpcProxyPlugin } from './rpc'
-import { issueAndVerifiyPlugin } from 'hapi-jolocom-plugin'
 import { createServer } from 'http'
 const typeorm = require("typeorm")
 
@@ -46,23 +45,10 @@ export const init = async () => {
   // server.bind(sdk)
 
   await server.register([{
-    plugin: issueAndVerifiyPlugin,
-    options: { 
-      sdk,
-      verifierConfig: [{
-        name: "verifier",
-        requirements: [ { type: ["email"], constraints: [] }
-        ],
-      }]
-    }
-  }])
-
-
-  await server.register([{
     plugin: rpcProxyPlugin,
     options: {
       sdk,
-      path: '/wallet/abcd', // TODO random
+      path: '/rpcProxy', // TODO random
       server
     }
   }]);

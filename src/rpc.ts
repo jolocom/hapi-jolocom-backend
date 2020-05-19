@@ -5,16 +5,21 @@ import { JolocomLib } from 'jolocom-lib'
 import {Server as WSServer, WebSocket} from 'ws'
 import * as url from 'url'
 
+const PUBLIC_URL = "http://localhost:9000"
+
 type PluginOptions = {
   sdk: JolocomSDK;
   path: string;
 };
 
+
+// FIXME this is not a channel, it's a session
 type ChannelState = {
     token?: string
     frontend?: WebSocket
     wallet?: WebSocket
     established?: boolean
+    messages: {[id: string]: any}
 }
 
 class PeerMap {
@@ -51,13 +56,13 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
   requirements: {
     node: "10",
   },
-  register: async (server: Server, { sdk }: PluginOptions) => {
-    const randevouzPath = '/rpcProxy';
+  register: async (server: Server, { sdk,  }: PluginOptions) => {
+    const randevouzPath = '/';
     const secludedPath = '/secluded/';
 
     // This is only used to redirect to a secluded path.
     // The redirection happens in the handshake, in the server.on('upgrade') event handler.
-    const randevouz = new WSServer({ 
+    const randevouz = new WSServer({
       noServer: true,
     }).on('connection', ws => ws.close());
 
@@ -70,7 +75,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
       if (!peerMap.doesChannelExist(nonce)) {
         throw new Error('Not initialized.') // TODO Error handling
       }
-      
+
       // Every client is greeted with an authentication request
       // As long as the request is valid, the channel can be joined by holders
       ws.send(peerMap.getChannel(nonce).token)
@@ -80,8 +85,12 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         // First check if the channel is already established
         if (peerMap.isChannelInitialised(nonce)) {
           debug(data)
-          // proxy
-          // or handle encryption / decryption
+          // proxy resp from wallet to browser/client
+          const ch = peerMap.getChannel(nonce)
+
+          const msg = JSON.parse(data)
+
+          ch.frontend.send(data.toString())
         } else {
           // Now we check perhaps the message is an authentication response.
           // In this case we attempt to validate it against the request, and mark
@@ -110,39 +119,83 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
       })
     })
 
+
+    server.route({
+      // FIXME POST
+      method: "GET",
+      path: '/',
+      handler: async (
+        request: Request,
+        h: ResponseToolkit
+      ) => {
+        const sdk: JolocomSDK = h.context.sdk
+        const token = await authRequestToken(sdk, request.url.href)
+        peerMap.updateChannel(token.nonce, {token: token.encode()})
+      },
+      options: {
+        bind: { sdk },
+      },
+    });
+
     // https://github.com/websockets/ws#multiple-servers-sharing-a-single-https-server
-    server.listener.on('upgrade', async (request, socket, head) => {
+    server.listener.on('upgrade', (request, socket, head) => {
       const pathname = url.parse(request.url).pathname
       debug(`New WS handshake on ${pathname}`)
 
       // The Frontend can connect to this endpoint to be automatically redirected to a secluded channel
       // at a random nonce.
-      if (pathname === randevouzPath) {
-          const token = await authRequestToken(sdk, request.url.href)
-          peerMap.updateChannel(token.nonce, {token: token.encode()})
+      // We need to ensure the peer is trying to access a valid* secluded endpoint
+      // Valid means the randevouz endpoint redirected to it earlier. I.e. the peer
+      // is not allowed to randomly select a nonce
+      const parts = pathname.split('/')
+      const nonce = parts[parts.length - 1]
 
-          // TODO Env variable for port and host
-          return socket.end(`HTTP/1.1 302 Found\nLocation: ws://192.168.137.1:9000${secludedPath}${token.nonce}\n\n`)
-      } else if (pathname.includes(secludedPath)) {
-          // We need to ensure the peer is trying to access a valid* secluded endpoint
-          // Valid means the randevouz endpoint redirected to it earlier. I.e. the peer
-          // is not allowed to randomly select a nonce
-          const parts = pathname.split('/')
-          const nonce = parts[parts.length - 1]
-
-          if (!peerMap.doesChannelExist(nonce)) {
-            throw new Error('Unknown channel, invalid nonce') // TODO Error handling
-          }
-
-          return secluded.handleUpgrade(request, socket, head, ws => {
-            // If all is good, the peer is added to the existing channel state
-            peerMap.updateChannel(nonce, {
-              frontend: ws
-            })
-
-            secluded.emit('connection', ws, request) 
-          })
+      if (!peerMap.doesChannelExist(nonce)) {
+        throw new Error('Unknown channel, invalid nonce') // TODO Error handling
       }
+
+      return secluded.handleUpgrade(request, socket, head, async (ws) => {
+        const token = await authRequestToken(sdk, request.url.href)
+        const ch = peerMap.getChannel(nonce)
+        peerMap.updateChannel(token.nonce, {
+          frontend: ws,
+          token: token.encode()
+        })
+
+        // send token jwt to frontend
+        const rpcStart = {
+          authToken: token,encode(),
+          authTokenQR: null, // TODO
+          identifier: nonce,
+          ws: `ws://${PUBLIC_URL}${secludedPath}${token.nonce}`
+        }
+        ws.send(JSON.stringify(rpcStart))
+
+        //proxy
+        ws.on('message', async (data) => {
+          const msg: any = JSON.parse(data)
+          // TODO create rpc request
+          // TODO save msgID
+          ch.messages[mag.id] = msg
+
+          let walletRPC
+          if (msg.rpc == 'asymEncrypt') {
+            walletRPC = await sdk.rpcEncRequest({
+              toEncrypt: Buffer.from(msg.request),
+              target: '#key-1', 
+              callbackURL: ''
+            })
+          } else if (msg.rpc == 'asymDecrypt') {
+              walletRPC = await sdk.rpcDecRequest({
+                toDecrypt: Buffer.from(msg.request),
+                callbackURL: ''
+              })
+          }
+          ch.wallet.send(walletRPC)
+        })
+
+        secluded.emit('connection', ws, request)
+      })
     })
   }
 }
