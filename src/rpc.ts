@@ -27,14 +27,15 @@ class PeerMap {
     [identifier: string]: ChannelState
   } = {}
 
-  public getChannel = (id: string) => this.peerMap[id] || {}
+  public getChannel = (id: string): ChannelState => this.peerMap[id] || { messages: {}}
 
   public isChannelInitialised = (id: string) => this.peerMap[id].established
 
   // If the token is not set, the rendevouz endpoint never redirected to it.
   public doesChannelExist = (id: string) => !!this.peerMap[id].token
 
-  public updateChannel = (id: string, channels: ChannelState) => {
+  // This is partial because of the messages field
+  public updateChannel = (id: string, channels: Partial<ChannelState>) => {
     this.peerMap[id] = {
       ...this.getChannel(id),
       ...channels
@@ -57,14 +58,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
     node: "10",
   },
   register: async (server: Server, { sdk,  }: PluginOptions) => {
-    const randevouzPath = '/';
     const secludedPath = '/secluded/';
-
-    // This is only used to redirect to a secluded path.
-    // The redirection happens in the handshake, in the server.on('upgrade') event handler.
-    const randevouz = new WSServer({
-      noServer: true,
-    }).on('connection', ws => ws.close());
 
     const secluded = new WSServer({
       noServer: true,
@@ -87,9 +81,6 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
           debug(data)
           // proxy resp from wallet to browser/client
           const ch = peerMap.getChannel(nonce)
-
-          const msg = JSON.parse(data)
-
           ch.frontend.send(data.toString())
         } else {
           // Now we check perhaps the message is an authentication response.
@@ -120,6 +111,8 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
     })
 
 
+    // This is only used to redirect to a secluded path.
+    // The redirection happens in the handshake, in the server.on('upgrade') event handler.
     server.route({
       // FIXME POST
       method: "GET",
@@ -131,6 +124,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         const sdk: JolocomSDK = h.context.sdk
         const token = await authRequestToken(sdk, request.url.href)
         peerMap.updateChannel(token.nonce, {token: token.encode()})
+        return { token: token.encode() }
       },
       options: {
         bind: { sdk },
@@ -142,33 +136,32 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
       const pathname = url.parse(request.url).pathname
       debug(`New WS handshake on ${pathname}`)
 
+      const parts = pathname.split('/')
+      const nonce = parts[parts.length - 1]
+
       // The Frontend can connect to this endpoint to be automatically redirected to a secluded channel
       // at a random nonce.
       // We need to ensure the peer is trying to access a valid* secluded endpoint
       // Valid means the randevouz endpoint redirected to it earlier. I.e. the peer
       // is not allowed to randomly select a nonce
-      const parts = pathname.split('/')
-      const nonce = parts[parts.length - 1]
-
       if (!peerMap.doesChannelExist(nonce)) {
         throw new Error('Unknown channel, invalid nonce') // TODO Error handling
       }
 
       return secluded.handleUpgrade(request, socket, head, async (ws) => {
-        const token = await authRequestToken(sdk, request.url.href)
         const ch = peerMap.getChannel(nonce)
-        peerMap.updateChannel(token.nonce, {
+        peerMap.updateChannel(nonce, {
           frontend: ws,
-          token: token.encode()
         })
 
         // send token jwt to frontend
         const rpcStart = {
-          authToken: token,encode(),
-          authTokenQR: null, // TODO
+          authToken: ch.token,
+          authTokenQR: null, // TODO encode?
           identifier: nonce,
-          ws: `ws://${PUBLIC_URL}${secludedPath}${token.nonce}`
+          ws: `ws://${PUBLIC_URL}${secludedPath}${nonce}`
         }
+
         ws.send(JSON.stringify(rpcStart))
 
         //proxy
@@ -176,7 +169,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
           const msg: any = JSON.parse(data)
           // TODO create rpc request
           // TODO save msgID
-          ch.messages[mag.id] = msg
+          ch.messages[msg.id] = msg
 
           let walletRPC
           if (msg.rpc == 'asymEncrypt') {
