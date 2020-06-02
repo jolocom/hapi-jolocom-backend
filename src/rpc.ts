@@ -114,7 +114,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
     // This is only used to redirect to a secluded path.
     // The redirection happens in the handshake, in the server.on('upgrade') event handler.
     server.route({
-      // FIXME POST
+      // FIXME POST, but for testing purposes
       method: "GET",
       path: '/',
       handler: async (
@@ -123,8 +123,9 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
       ) => {
         const sdk: JolocomSDK = h.context.sdk
         const token = await authRequestToken(sdk, request.url.href)
-        peerMap.updateChannel(token.nonce, {token: token.encode()})
-        return { token: token.encode() }
+        const newChan = {token: token.encode()}
+        peerMap.updateChannel(token.nonce, newChan)
+        return newChan
       },
       options: {
         bind: { sdk },
