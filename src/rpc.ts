@@ -27,17 +27,19 @@ class PeerMap {
     [identifier: string]: ChannelState
   } = {}
 
-  public getChannel = (id: string): ChannelState => this.peerMap[id] || { messages: {}}
+  public getChannel = (id: string): ChannelState => this.peerMap[id] // || { id, messages: {}}
 
-  public isChannelInitialised = (id: string) => this.peerMap[id].established
+  public isChannelInitialised = (id: string) => this.getChannel(id)?.established
 
   // If the token is not set, the rendevouz endpoint never redirected to it.
-  public doesChannelExist = (id: string) => !!this.peerMap[id].token
+  public doesChannelExist = (id: string) => !!this.getChannel(id)?.token
 
   // This is partial because of the messages field
   public updateChannel = (id: string, channels: Partial<ChannelState>) => {
+    const chan = this.getChannel(id)
+    if (!chan) throw new Error('peer not connected!') // FIXME errors
     this.peerMap[id] = {
-      ...this.getChannel(id),
+      ...chan,
       ...channels
     }
   }
@@ -70,44 +72,6 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         throw new Error('Not initialized.') // TODO Error handling
       }
 
-      // Every client is greeted with an authentication request
-      // As long as the request is valid, the channel can be joined by holders
-      ws.send(peerMap.getChannel(nonce).token)
-
-      ws.on('message', async data => {
-        // At this point we might receive a generic encryption event, or an authentication response, everything else is considered invalid input
-        // First check if the channel is already established
-        if (peerMap.isChannelInitialised(nonce)) {
-          debug(data)
-          // proxy resp from wallet to browser/client
-          const ch = peerMap.getChannel(nonce)
-          ch.frontend.send(data.toString())
-        } else {
-          // Now we check perhaps the message is an authentication response.
-          // In this case we attempt to validate it against the request, and mark
-          // the channel as established.
-          try {
-            // As far as I can tell, there's no way to instantiate a JsonWebToken<JWTEncodable> through the sdk
-            // had to resort to this. // TODO, lift
-            const response = JolocomLib.parse.interactionToken.fromJWT(data.toString())
-            const request = JolocomLib.parse.interactionToken.fromJWT(peerMap.getChannel(nonce).token)
-
-            await sdk.idw.validateJWT(
-              response,
-              request
-            )
-
-            peerMap.updateChannel(nonce, {
-              wallet: ws,
-              established: true
-            })
-            debug(`New peer connected to secluded channel ${nonce}, both peers on. Channel established.`)
-          } catch (err) {
-              // TODO Handle
-              debug(err)
-          }
-        }
-      })
     })
 
 
@@ -138,7 +102,9 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
       debug(`New WS handshake on ${pathname}`)
 
       const parts = pathname.split('/')
-      const nonce = parts[parts.length - 1]
+      const nonce = parts[0]
+      const isSSI = parts.length > 1 && parts[1] == 'frontend'
+      const chan  = peerMap.getChannel(none)
 
       // The Frontend can connect to this endpoint to be automatically redirected to a secluded channel
       // at a random nonce.
@@ -147,6 +113,47 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
       // is not allowed to randomly select a nonce
       if (!peerMap.doesChannelExist(nonce)) {
         throw new Error('Unknown channel, invalid nonce') // TODO Error handling
+      }
+
+      if (isSSI) {
+        // Every SSI Agent is greeted with an Authentication request
+        // As long as the request is valid, the channel can be joined by holders
+        ws.send(peerMap.getChannel(nonce).token)
+
+        ws.on('message', async data => {
+          // At this point we might receive a generic encryption event, or an authentication response, everything else is considered invalid input
+          // First check if the channel is already established
+          if (peerMap.isChannelInitialised(nonce)) {
+            debug(data)
+            // proxy resp from wallet to browser/client
+            const ch = peerMap.getChannel(nonce)
+            ch.frontend.send(data.toString())
+          } else {
+            // Now we check perhaps the message is an authentication response.
+            // In this case we attempt to validate it against the request, and mark
+            // the channel as established.
+            try {
+              // As far as I can tell, there's no way to instantiate a JsonWebToken<JWTEncodable> through the sdk
+              // had to resort to this. // TODO, lift
+              const response = JolocomLib.parse.interactionToken.fromJWT(data.toString())
+              const request = JolocomLib.parse.interactionToken.fromJWT(peerMap.getChannel(nonce).token)
+
+              await sdk.idw.validateJWT(
+                response,
+                request
+              )
+
+              peerMap.updateChannel(nonce, {
+                wallet: ws,
+                established: true
+              })
+              debug(`New peer connected to secluded channel ${nonce}, both peers on. Channel established.`)
+            } catch (err) {
+                // TODO Handle
+                debug(err)
+            }
+          }
+        })
       }
 
       return secluded.handleUpgrade(request, socket, head, async (ws) => {
