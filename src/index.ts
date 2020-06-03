@@ -48,8 +48,10 @@ export const init = async () => {
     plugin: rpcProxyPlugin,
     options: {
       sdk,
-      path: '/rpcProxy', // TODO random
       server
+    },
+    routes: {
+      prefix: '/rpcProxy',
     }
   }]);
 
