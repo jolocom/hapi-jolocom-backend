@@ -5,7 +5,9 @@ import { JolocomLib } from 'jolocom-lib'
 import {Server as WSServer, WebSocket} from 'ws'
 import * as url from 'url'
 
-const PUBLIC_URL = "http://localhost:9000"
+const PUBLIC_HOSTPORT = 'localhost:9000'
+const PUBLIC_HTTP_URL = `http://${PUBLIC_HOSTPORT}`
+const PUBLIC_WS_URL = `ws://${PUBLIC_HOSTPORT}`
 
 type PluginOptions = {
   sdk: JolocomSDK;
@@ -57,10 +59,10 @@ class PeerMap {
     return newCh
   }
 
-  // FIXME rename to createRelay!
-  public createChannel = (sdk: JolocomSDK, relayPath: string) => {
-    const callbackPrefix = 'rpcProxy' // FIXME compute
-    const token = await authRequestToken(sdk, `ws://${callbackPrefix}`)
+  // FIXME rename to createChannelRelay? or something
+  public createChannel = (sdk: JolocomSDK) => {
+    const callbackPath = '/rpcProxy/ssi' // FIXME compute
+    const token = await authRequestToken(sdk, `${PUBLIC_WS_URL}${callbackPath}`)
     // FIXME add QR code also!
     const ch = {
       token: token,
@@ -88,9 +90,6 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
     node: "10",
   },
   register: async (server: Server, { sdk,  }: PluginOptions) => {
-    const secludedPath = '/secluded';
-    const secludedSSIPath = `${secludedPath}/ssi`;
-
     /**
      * Route handler for SSI capable agents.
      *
@@ -100,10 +99,10 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
      * reponse JWT to establish the channel.
      */
     server.route({
-      method: "POST", path: secludedSSIPath,
+      method: 'POST', path: '/ssi',
       config: {
         // payloads are expedted to be JWT, and maybe FIXME auto parse
-        payload: { output: "data", parse: true, allow: "text/plain" },
+        payload: { output: 'data', parse: true, allow: 'text/plain' },
         plugins: {
           websocket: {
             only: true,
@@ -145,7 +144,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
             ssiWS: ws,
             established: true
           })
-          debug(`New SSI Agent connected to secluded channel ${newCh.token.nonce}. Channel established.`)
+          debug(`New SSI Agent connected to channel ${newCh.token.nonce}. Channel established.`)
           // FIXME this should just pass the token through the interaction
           // manager maybe? then return whatever is returned
           return
@@ -164,16 +163,14 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
     /**
      * Route handler for non-SSI capable frontends
      *
-     * Frontend clients must POST to the `secludedPath` to create a new channel/session
+     * Frontend clients must POST to '/' to create a new channel/session
      * They will then get a channel JSON object which contains a ws:// URL to
      * connect to this newly created channel
      *
-     * The ws:// URL generated is just the `secludedPath` + channel token nonce
-     *
-     * This route also handles WS connections to the `secludedPath/{nonce}`
+     * The ws:// URL generated is by appending the token nonce
      */
     server.route({
-      method: "POST", path: `${secludedPath}/{nonce?}`,
+      method: "POST", path: `/{nonce?}`,
       config: {
         payload: { output: "data", parse: true, allow: "application/json" },
         plugins: {
@@ -209,14 +206,14 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
           } else {
             // If the connection context doesn't already have an associated
             // channel then we simply create a new one for this frontend client
-            ch = ctx.ch = peerMap.createChannel(h.context.sdk, secludedPath)
+            ch = ctx.ch = peerMap.createChannel(h.context.sdk)
             return peerMap.getChannelJSON(ch)
             // FIXME what about rpcStart
             //const rpcStart = {
             //  authToken: chan.token,
             //  authTokenQR: null, // TODO encode?
             //  identifier: nonce,
-            //  ws: `ws://${PUBLIC_URL}${secludedPath}${nonce}`
+            //  ws: `${PUBLIC_WS_URL}${secludedPath}${nonce}`
             //}
           }
         }
