@@ -15,9 +15,11 @@ type PluginOptions = {
 
 // FIXME this is not a channel, it's a session
 type ChannelState = {
-    token?: string
-    frontend?: WebSocket
-    wallet?: WebSocket
+    // TODO rename to authRequest?
+    // FIXME set proper type instead of relying on ReturnType
+    token: ReturnType<sdk.idw.create.interactionTokens.request.auth>
+    rpcWS?: WebSocket
+    ssiWS?: WebSocket
     established?: boolean
     messages: {[id: string]: any}
 }
@@ -27,28 +29,47 @@ class PeerMap {
     [identifier: string]: ChannelState
   } = {}
 
-  public getChannel = (id: string): ChannelState => this.peerMap[id] // || { id, messages: {}}
-
-  public isChannelInitialised = (id: string) => this.getChannel(id)?.established
-
-  // If the token is not set, the rendevouz endpoint never redirected to it.
-  public doesChannelExist = (id: string) => !!this.getChannel(id)?.token
-
-  // This is partial because of the messages field
-  public updateChannel = (id: string, channels: Partial<ChannelState>) => {
-    const chan = this.getChannel(id)
-    if (!chan) throw new Error('peer not connected!') // FIXME errors
-    this.peerMap[id] = {
-      ...chan,
-      ...channels
+  public getChannel = (id: string): ChannelState => {
+    const ch = this.peerMap[id]
+    if (!ch) throw new Error('channel not found!')
+    return ch
+  }
+  public getChannelJSON = (ch: ChannelState, relayPath: string): ChannelState => {
+    return {
+      jwt: ch.token.encode(),
+      nonce: ch.token.nonce,
+      rpcWS: `ws://${callbackPrefix}${relayPath}`
     }
   }
 
-  public createChannel = (sdk: JolocomSDK, callbackURLPrefix='') => {
-    const token = await authRequestToken(sdk, `${callbackURLPrefix}/${tokenNonceLOL}`)
-    const chan = { token: token.encode() }
-    this.peerMap[token.nonce] = chan
-    return chan
+  public isChannelInitialised = (id: string) => this.getChannel(id).established
+
+  // If the token is not set, the rendevouz endpoint never redirected to it.
+  public doesChannelExist = (id: string) => !!this.getChannel(id).token
+
+  // This is partial because of the messages field
+  public updateChannel = (id: string, update: Partial<ChannelState>) => {
+    const ch = this.getChannel(id)
+    newCh = this.peerMap[id] = {
+      ...ch,
+      ...update
+    }
+    return newCh
+  }
+
+  // FIXME rename to createRelay!
+  public createChannel = (sdk: JolocomSDK, relayPath: string) => {
+    const callbackPrefix = 'rpcProxy' // FIXME compute
+    const token = await authRequestToken(sdk, `ws://${callbackPrefix}`)
+    // FIXME add QR code also!
+    const ch = {
+      token: token,
+      id: token.nonce,
+      // FIXME add info about connected peers in a more structure manner than
+      // just `rpcWS` and `ssiWS`?
+    }
+    this.peerMap[ch.id] = ch
+    return ch
   }
 }
 
@@ -67,135 +88,172 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
     node: "10",
   },
   register: async (server: Server, { sdk,  }: PluginOptions) => {
-    const secludedPath = '/secluded/';
+    const secludedPath = '/secluded';
+    const secludedSSIPath = `${secludedPath}/ssi`;
 
-    // This is only used to redirect to a secluded path.
-    // The redirection happens in the handshake, in the server.on('upgrade') event handler.
-
+    /**
+     * Route handler for SSI capable agents.
+     *
+     * Agents are expected to exclusively use WS
+     *
+     * On initial connection, Agents are expected to send an Authentication
+     * reponse JWT to establish the channel.
+     */
     server.route({
-      // FIXME POST, but for testing purposes
-      method: "POST", path: '/',
+      method: "POST", path: secludedSSIPath,
+      config: {
+        // payloads are expedted to be JWT, and maybe FIXME auto parse
+        payload: { output: "data", parse: true, allow: "text/plain" },
+        plugins: {
+          websocket: {
+            only: true,
+            connect: ({ ctx, ws }) => {
+              // TODO track the ws early on, to keep the peerMap up-to-date
+              // TODO reset any timeouts that were set to clear the open channel from memory
+            },
+            disconnect: ({ ctx }) => {
+              // TODO set a timeout to clear the open channel from memory
+            }
+          }
+        }
+      },
       handler: async (
         request: Request,
         h: ResponseToolkit
       ) => {
-        return peerMap.createChannel(h.context.sdk, request.url.href)
-      },
-      options: {
-        bind: { sdk },
-      },
-    });
+        let { initially, ws, ctx } = request.websocket()
 
-    const secluded = new WSServer({
-      noServer: true,
-    }).on('connection', (ws, req) => {
-      debug(`New WS handshake on ${pathname}`)
-      const pathname = url.parse(request.url).pathname
-      const parts = pathname.split('/')
-      const isSSI = parts.length > 1 && parts[1] == 'frontend'
-      const nonce = parts[0]
-      const chan  = peerMap.getChannel(none)
+        const data = request.payload
+        if (!data) return
+        debug("incoming message from SSI agent")
 
-      // The Frontend can connect to this endpoint to be automatically
-      // redirected to a secluded channel identified by a random nonce.
-      // We need to ensure the peer is trying to access a valid* secluded endpoint
-      // Valid means the randevouz endpoint redirected to it earlier.
-      // I.e. the peer is not allowed to randomly select a nonce
-      if (!chan) {
-        throw new Error('Unknown channel, invalid nonce') // TODO Error handling
-      }
+        let ch = ctx.ch
+        if (!ch) {
+          // If the connection context doesn't already have an associated
+          // channel then this client has not yet successfully authenticated
+          //
+          // We expect to receive an Authentication Response
+          const authResp = JolocomLib.parse.interactionToken.fromJWT(data)
+          ch = peerMap.getChannel(authResp.nonce)
+          const authReq = ch.token
 
-      if (isSSI) {
-        // Every SSI Agent is greeted with an Authentication request
-        // As long as the request is valid, the channel can be joined by holders
-        ws.send(chan.token)
+          // FIXME TODO does this throw if invalid?
+          // FIXME Boom error handling
+          await sdk.idw.validateJWT(authResp, authReq)
 
-        ws.on('message', async data => {
-          // At this point we might receive a
-          //  generic encryption event, or an authentication response, everything else is considered invalid input
-
-          // First check if the channel is already established
-          if (chan.established) {
-            debug("incoming message from SSI agent")
-            debug(data)
-            sdk.tokenReceived
-            // FIXME TODO
-            // proxy resp from wallet to browser/client
-            ch.frontend.send(data.toString())
-          } else {
-            // Now we check perhaps the message is an authentication response.
-            // In this case we attempt to validate it against the request, and mark
-            // the channel as established.
-            try {
-              // As far as I can tell, there's no way to instantiate a JsonWebToken<JWTEncodable> through the sdk
-              // had to resort to this. // TODO, lift
-              const response = JolocomLib.parse.interactionToken.fromJWT(data.toString())
-              const request = JolocomLib.parse.interactionToken.fromJWT(chan.token)
-
-              await sdk.idw.validateJWT(
-                response,
-                request
-              )
-
-              // FIXME refactor??
-              peerMap.updateChannel(nonce, {
-                wallet: ws,
-                established: true
-              })
-              debug(`New SSI Agent connected to secluded channel ${nonce}. Channel established.`)
-            } catch (err) {
-                // TODO Handle
-                debug(err)
-            }
-          }
-        })
-      } else {
-        // For non-SSI agents, we do no authentication besides that fact that
-        // they know the secret nonce for this authentication operation
-        peerMap.updateChannel(nonce, {
-          frontend: ws,
-        })
-
-        // send token JWT to frontend
-        const rpcStart = {
-          authToken: chan.token,
-          authTokenQR: null, // TODO encode?
-          identifier: nonce,
-          ws: `ws://${PUBLIC_URL}${secludedPath}${nonce}`
+          const newCh = ctx.ch = peerMap.updateChannel(ch.token.nonce, {
+            ssiWS: ws,
+            established: true
+          })
+          debug(`New SSI Agent connected to secluded channel ${newCh.token.nonce}. Channel established.`)
+          // FIXME this should just pass the token through the interaction
+          // manager maybe? then return whatever is returned
+          return
         }
 
-        ws.send(JSON.stringify(rpcStart))
+        // FIXME TODO
+        //sdk.tokenReceived
+        // find msg by id somehow
+        // maybe msg id should be nonce of created RPC request?
+        // proxy resp from wallet to browser/client
+        ch.rpcWS.send(data.toString())
+      },
+    })
+
+
+    /**
+     * Route handler for non-SSI capable frontends
+     *
+     * Frontend clients must POST to the `secludedPath` to create a new channel/session
+     * They will then get a channel JSON object which contains a ws:// URL to
+     * connect to this newly created channel
+     *
+     * The ws:// URL generated is just the `secludedPath` + channel token nonce
+     *
+     * This route also handles WS connections to the `secludedPath/{nonce}`
+     */
+    server.route({
+      method: "POST", path: `${secludedPath}/{nonce?}`,
+      config: {
+        payload: { output: "data", parse: true, allow: "application/json" },
+        plugins: {
+          websocket: {
+            connect: ({ ctx, ws }) => {
+              // TODO track the ws early on, to keep the peerMap up-to-date
+              // TODO reset any timeouts that were set to clear the open channel from memory
+            },
+            disconnect: ({ ctx }) => {
+              // TODO set a timeout to clear the open channel from memory
+            }
+          }
+        },
+      },
+      handler: async (
+        request: Request,
+        h: ResponseToolkit
+      ) => {
+        let { initially, ws, ctx } = request.websocket()
+        const params = request.params || {}
+        let ch = ctx.ch
+
+        if (!ch) {
+          // if there's a nonce then we are talking to an 'authenticated' frontend
+          if (params.nonce && mode == 'websocket' && ws) {
+            try {
+              ctx.ch = ch = peerMap.updateChannel(params.nonce, {
+                rpcWS: ws
+              })
+            } catch (err) {
+              return Boom.badRequest(err.toString())
+            }
+          } else {
+            // If the connection context doesn't already have an associated
+            // channel then we simply create a new one for this frontend client
+            ch = ctx.ch = peerMap.createChannel(h.context.sdk, secludedPath)
+            return peerMap.getChannelJSON(ch)
+            // FIXME what about rpcStart
+            //const rpcStart = {
+            //  authToken: chan.token,
+            //  authTokenQR: null, // TODO encode?
+            //  identifier: nonce,
+            //  ws: `ws://${PUBLIC_URL}${secludedPath}${nonce}`
+            //}
+          }
+        }
 
         // All incoming messages on the frontend WebSocket are expected to be
         // RPC calls in a simple JSON format
         // These calls must be proxied to the connected SSI Agent, in the form
         // of JWT interaction tokens.
-        ws.on('message', async (data) => {
-          const msg: any = JSON.parse(data)
-          chan.messages[msg.id] = msg
+        const msg = request.payload // hapi auto parsed
 
-          // TODO create rpc request
-          let walletRPC
-          if (msg.rpc == 'asymEncrypt') {
-            walletRPC = await sdk.rpcEncRequest({
-              toEncrypt: Buffer.from(msg.request),
-              target: '#key-1',
-              callbackURL: ''
+        // TODO create rpc request
+        let ssiRPC
+        if (msg.rpc == 'asymEncrypt') {
+          ssiRPC = await sdk.rpcEncRequest({
+          toEncrypt: Buffer.from(msg.request),
+            target: '#key-1',
+            callbackURL: ''
+          })
+        } else if (msg.rpc == 'asymDecrypt') {
+          ssiRPC = await sdk.rpcDecRequest({
+            toDecrypt: Buffer.from(msg.request),
+            callbackURL: ''
             })
-          } else if (msg.rpc == 'asymDecrypt') {
-              walletRPC = await sdk.rpcDecRequest({
-                toDecrypt: Buffer.from(msg.request),
-                callbackURL: ''
-              })
-          }
-          chan.wallet.send(walletRPC)
-        })
+        }
 
-        // TODO what was this for?
-        secluded.emit('connection', ws, request)
-      }
+        ch.ssiWS.send(ssiRPC)
 
+        return new Promise(resolve => {
+            // we postpone this request's resolution until the SSI agent
+            // responds
+            msg.resolve = resolve
+            ch.messages[msg.id] = msg
+          })
+        }
+      },
     })
+
   }
 }
 export const debug = (input: any) => process.env.DEBUG && console.log(input)

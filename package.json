@@ -18,6 +18,7 @@
     "@hapi/hapi": "18",
     "@jolocom/sdk": "^0.9.1",
     "@jolocom/sdk-storage-typeorm": "^1.1.0",
+    "hapi-plugin-websocket": "^2.3.0",
     "jolocom-lib": "^4.2.8",
     "typeorm": "^0.2.24"
   }
