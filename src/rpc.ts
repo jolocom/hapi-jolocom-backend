@@ -5,6 +5,12 @@ import { JolocomLib } from 'jolocom-lib'
 import {Server as WSServer, WebSocket} from 'ws'
 import * as url from 'url'
 
+const debug = process.env.DEBUG
+  ? console.log.bind(console)
+  : function(){}
+
+debug('Debugging output is on')
+
 const PUBLIC_HOSTPORT = 'localhost:9000'
 const PUBLIC_HTTP_URL = `http://${PUBLIC_HOSTPORT}`
 const PUBLIC_WS_URL = `ws://${PUBLIC_HOSTPORT}`
@@ -120,11 +126,15 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         request: Request,
         h: ResponseToolkit
       ) => {
+        debug("incoming message from SSI agent")
+
         let { initially, ws, ctx } = request.websocket()
 
         const data = request.payload
-        if (!data) return
-        debug("incoming message from SSI agent")
+        if (!data) {
+          debug('no payload')
+          return
+        }
 
         let ch = ctx.ch
         if (!ch) {
@@ -206,8 +216,11 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
           } else {
             // If the connection context doesn't already have an associated
             // channel then we simply create a new one for this frontend client
-            ch = ctx.ch = peerMap.createChannel(h.context.sdk)
-            return peerMap.getChannelJSON(ch)
+            debug('awaiting createChannel')
+            ctx.ch = await peerMap.createChannel(sdk)
+            const chJSON = peerMap.getChannelJSON(ctx.ch)
+            debug('channel json', chJSON)
+            return chJSON
             // FIXME what about rpcStart
             //const rpcStart = {
             //  authToken: chan.token,
@@ -223,6 +236,10 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         // These calls must be proxied to the connected SSI Agent, in the form
         // of JWT interaction tokens.
         const msg = request.payload // hapi auto parsed
+        if (!msg) {
+          debug('no msg :(')
+          return
+        }
 
         // TODO create rpc request
         let ssiRPC
