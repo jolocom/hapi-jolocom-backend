@@ -1,4 +1,5 @@
 import * as hapi from '@hapi/hapi'
+import * as HAPIWebSocket from 'hapi-plugin-websocket'
 import { FilePasswordStore, JolocomSDK } from "@jolocom/sdk"
 import { JolocomTypeormStorage } from "@jolocom/sdk-storage-typeorm"
 import { rpcProxyPlugin } from './rpc'
@@ -44,16 +45,17 @@ export const init = async () => {
 
   // server.bind(sdk)
 
-  await server.register([{
+  await server.register(HAPIWebSocket)
+
+  await server.register({
     plugin: rpcProxyPlugin,
     options: {
-      sdk,
-      server
+      sdk
     },
     routes: {
       prefix: '/rpcProxy',
     }
-  }]);
+  });
 
   await server.start();
   console.log("running")
