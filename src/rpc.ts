@@ -46,7 +46,7 @@ class PeerMap {
     return {
       jwt: ch.token.encode(),
       nonce: ch.token.nonce,
-      rpcWS: `ws://${callbackPrefix}${relayPath}`
+      rpcWS: ch.rpcWS
     }
   }
 
@@ -66,12 +66,13 @@ class PeerMap {
   }
 
   // FIXME rename to createChannelRelay? or something
-  public createChannel = (sdk: JolocomSDK) => {
-    const callbackPath = '/rpcProxy/ssi' // FIXME compute
-    const token = await authRequestToken(sdk, `${PUBLIC_WS_URL}${callbackPath}`)
+  public createChannel = async (sdk: JolocomSDK) => {
+    const rpcWS = `${PUBLIC_WS_URL}/rpcProxy` // FIXME compute
+    const token = await authRequestToken(sdk, rpcWS)
     // FIXME add QR code also!
     const ch = {
       token: token,
+      rpcWS,
       id: token.nonce,
       // FIXME add info about connected peers in a more structure manner than
       // just `rpcWS` and `ssiWS`?
