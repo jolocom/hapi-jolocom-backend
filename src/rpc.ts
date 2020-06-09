@@ -207,14 +207,21 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
     server.route({
       method: "POST", path: `/{nonce?}`,
       config: {
+                                 // BIG WARNING
+        cors: { origin: ['*'] }, // FIXME lift up to config.ts or something and add
+                                 // BIG WARNING
         payload: { output: "data", parse: true, allow: "application/json" },
         plugins: {
           websocket: {
-            connect: ({ ctx, ws }) => {
+            connect: async ({ ctx, ws, req }) => {
               // TODO track the ws early on, to keep the peerMap up-to-date
               // TODO reset any timeouts that were set to clear the open channel from memory
+              //
+              // If the connection context doesn't already have an associated
+              // channel then we simply create a new one for this frontend client
             },
             disconnect: ({ ctx }) => {
+              debug('client disconnect; context', ctx)
               // TODO set a timeout to clear the open channel from memory
             }
           }
