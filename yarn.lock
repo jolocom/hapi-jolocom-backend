@@ -308,10 +308,10 @@
   dependencies:
     class-transformer "^0.2.3"
 
-"@jolocom/sdk@^0.9.4":
-  version "0.9.4"
-  resolved "https://registry.yarnpkg.com/@jolocom/sdk/-/sdk-0.9.4.tgz#1c7931b727a310847c1b04b55db1afa20430b6e1"
-  integrity sha512-oQvtAFTO1xyBraY1E+pwo/p+YTnXkFy1ewSKwtmFDE3udM4aRicd6fOMPgbXIE3fDMvwHY8dBdt6HHWwhxDtYA==
+"@jolocom/sdk@^0.9.12":
+  version "0.9.12"
+  resolved "https://registry.yarnpkg.com/@jolocom/sdk/-/sdk-0.9.12.tgz#187c3a5e7373068d309f265820a15903bf7a2990"
+  integrity sha512-fHZJrjnqI0SIZ9wKNuM64xHW/e1WIm5TzDKbTwvcrKq7qZOttTAZc+xm4XF9Fta6NGoyQUeRb+a8ezk8a+A+nA==
   dependencies:
     assert "^2.0.0"
     bip39 "^3.0.2"
@@ -322,7 +322,7 @@
     events "^3.0.0"
     form-data "^3.0.0"
     i18n-js "^3.1.0"
-    jolocom-lib "^4.3.1"
+    jolocom-lib "^4.3.2"
     ramda "^0.26.1"
     sjcl "^1.0.7"
     sqlite3 "^4.0.0"
@@ -1435,7 +1435,7 @@ ecc-jsbn@~0.1.1:
     jsbn "~0.1.0"
     safer-buffer "^2.1.0"
 
-"eccrypto@github:rootstock/eccrypto#485e11f163093fb6e0d5263fa46ed5075dedfe88":
+"eccrypto@github:rootstock/eccrypto#485e11f163093fb6e0d5263fa46ed5075dedfe88", eccrypto@rootstock/eccrypto#485e11f163093fb6e0d5263fa46ed5075dedfe88:
   version "1.1.2"
   resolved "https://codeload.github.com/rootstock/eccrypto/tar.gz/485e11f163093fb6e0d5263fa46ed5075dedfe88"
   dependencies:
@@ -2528,10 +2528,10 @@ isurl@^1.0.0-alpha5:
     has-to-string-tag-x "^1.2.0"
     is-object "^1.0.1"
 
-jolocom-lib@^4.3.1:
-  version "4.3.1"
-  resolved "https://registry.yarnpkg.com/jolocom-lib/-/jolocom-lib-4.3.1.tgz#4235d224a13635c3370618d44aa65e86642b7e72"
-  integrity sha512-07Pl5IEXjTCGkvmR/ci9dLiKBH/f/wHlJ/UoNBfraSIxX7uhqcFJUT6HGpxlS2ZFNaNxAn1j3HMpv4PkUsp79A==
+jolocom-lib@^4.3.2:
+  version "4.3.2"
+  resolved "https://registry.yarnpkg.com/jolocom-lib/-/jolocom-lib-4.3.2.tgz#bfbc8a39eb757f7521750d1c7fe08c5068bb0d8d"
+  integrity sha512-heHuifeVPumhm2HZQxc4S64ptTNV71yci0s8QVpRabkX33h5h9/h7yfDjEJJcjv7KKs5YG7k0eUrOchORzkRrg==
   dependencies:
     base64url "^3.0.1"
     bip32 "^1.0.2"

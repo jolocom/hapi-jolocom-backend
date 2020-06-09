@@ -31,6 +31,7 @@ type ChannelState = {
     nonce?: string
     rpcWS?: WebSocket
     ssiWS?: WebSocket
+    did?: string
     paths?: {
       rpcWS: string,
       ssiWS: string
@@ -132,7 +133,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
     server.route({
       method: 'POST', path: '/ssi',
       config: {
-        // payloads are expedted to be JWT, and maybe FIXME auto parse
+        // payloads are expected to be JWT, and maybe FIXME auto parse
         // payload: { output: 'data', parse: true },
         plugins: {
           websocket: {
@@ -157,7 +158,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         const data = request.payload
         if (!data) {
           debug('no payload')
-          return
+          return ''
         }
 
         let ch = ctx.ch
@@ -170,13 +171,15 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
           ch = peerMap.getChannel(authResp.nonce)
           const authReq = ch.token
 
+          //console.log('about to validate', authResp, authReq)
           // FIXME TODO does this throw if invalid?
           // FIXME Boom error handling
           // @ts-ignore
-          await sdk.idw.validateJWT(authResp, authReq)
+          //await sdk.idw.validateJWT(authResp, authReq)
 
           ctx.ch = peerMap.updateChannel(ch.token.nonce, {
             ssiWS: ws,
+            did: authResp.signer.did,
             established: true
           })
           debug(`New SSI Agent connected to channel ${ctx.ch.token.nonce}. Channel established.`)
@@ -189,6 +192,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
 
         // Past this point we know that this is an RPC response
 
+        console.log('received a message', data)
         const weGood = await sdk.tokenRecieved(data)
         console.log('token processed successfully:', weGood)
         const rpcResp = JolocomLib.parse.interactionToken.fromJWT(data)
@@ -202,8 +206,10 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         msg.resolve({
           id: msg.id,
           request: msg,
-          response: interactionTokens[1].payload
+          response: interactionTokens[1].payload.interactionToken.result
         })
+
+        return ''
       },
     })
 
@@ -305,7 +311,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
             if (msg.rpc == 'asymEncrypt') {
               ssiRPC = await sdk.rpcEncRequest({
                 toEncrypt: Buffer.from(msg.request),
-                target: '#key-1',
+                target: `${ch.did}#keys-1`,
                 callbackURL: ''
               })
             } else if (msg.rpc == 'asymDecrypt') {
@@ -313,6 +319,8 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
                 toDecrypt: Buffer.from(msg.request),
                 callbackURL: ''
               })
+            } else {
+              throw new Error('unrecognised msg: ' + msg)
             }
           } catch (err) {
             debug('failed to create RPC token', err)
@@ -329,7 +337,8 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
 
           ch.messages[rpcToken.nonce] = msg
 
-          ch.ssiWS.send(ssiRPC)
+          console.log('sending RPC token', ssiRPC)
+          ch.ssiWS.send(JSON.stringify(ssiRPC))
         }
 
         return new Promise(resolve => {
