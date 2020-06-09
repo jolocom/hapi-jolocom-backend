@@ -230,38 +230,53 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
       handler: async (
         request: Request,
         h: ResponseToolkit
-      ) => {
-        let { initially, ws, ctx } = request.websocket()
+      ) => { /**/
+        const { initially, mode, ctx } = request.websocket()
         const params = request.params || {}
-        let ch = ctx.ch
+        debug('handle front for chan', params.nonce)
 
-        if (!ch) {
-          // if there's a nonce then we are talking to an 'authenticated' frontend
-          if (params.nonce && mode == 'websocket' && ws) {
-            try {
-              ctx.ch = ch = peerMap.updateChannel(params.nonce, {
-                rpcWS: ws
-              })
-            } catch (err) {
-              return Boom.badRequest(err.toString())
-            }
-          } else {
-            // If the connection context doesn't already have an associated
-            // channel then we simply create a new one for this frontend client
-            debug('awaiting createChannel')
-            ctx.ch = await peerMap.createChannel(sdk)
-            const chJSON = peerMap.getChannelJSON(ctx.ch)
-            debug('channel json', chJSON)
-            return chJSON
-            // FIXME what about rpcStart
-            //const rpcStart = {
-            //  authToken: chan.token,
-            //  authTokenQR: null, // TODO encode?
-            //  identifier: nonce,
-            //  ws: `${PUBLIC_WS_URL}${secludedPath}${nonce}`
-            //}
+        if (mode === 'websocket') {
+          // NOTE nested 'if (initially) { .. }' to avoid condition of intially=false triggering
+          // the else clause
+          if (!params.nonce) {
+            return Boom.badRequest('missing session nonce')
           }
+
+          try {
+            if (initially) {
+              // if this is an initial request, we find the channel and update it with our current open
+              // websocket which is the 'authenticated' frontend socket
+              // 'authenticated' because of usage of the nonce of course
+              ctx.ch = peerMap.updateChannel(params.nonce, {
+                rpcWS: ctx.ws
+              })
+            } else if (!ctx.ch) {
+              // If the connection context doesn't already have an associated
+              // channel then we try to find it
+              ctx.ch = peerMap.getChannel(params.nonce)
+            }
+          } catch (err) {
+            return Boom.badRequest(err.toString())
+          }
+        } else {
+          if (params.nonce) {
+            // request not supported currently
+            // TODO should we support POST requests to the channel?
+            return Boom.badRequest('not supported')
+          }
+          debug('awaiting createChannel')
+          const ch = await peerMap.createChannel(sdk)
+          const chJSON = peerMap.getChannelJSON(ch)
+          debug('channel json', chJSON)
+          return chJSON
+        } 
+
+        if (!ctx.ch.ssiWS) {
+          return Boom.badRequest('no SSI agent connected yet')
         }
+
+        // Past this point we know that this is a request on an established
+        // channel accessible through ctx.ch, and there's a connected SSI Agent
 
         // All incoming messages on the frontend WebSocket are expected to be
         // RPC calls in a simple JSON format
@@ -285,21 +300,19 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
           ssiRPC = await sdk.rpcDecRequest({
             toDecrypt: Buffer.from(msg.request),
             callbackURL: ''
-            })
-        }
-
-        ch.ssiWS.send(ssiRPC)
-
-        return new Promise(resolve => {
-            // we postpone this request's resolution until the SSI agent
-            // responds
-            msg.resolve = resolve
-            ch.messages[msg.id] = msg
           })
         }
-      },
-    })
 
+        ctx.ch.ssiWS.send(ssiRPC)
+
+        return new Promise(resolve => {
+          // we postpone this request's resolution until the SSI agent
+          // responds
+          msg.resolve = resolve
+          ctx.ch.messages[msg.id] = msg
+        })
+
+      /**/ }
+    })
   }
 }
-export const debug = (input: any) => process.env.DEBUG && console.log(input)
