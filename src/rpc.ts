@@ -151,9 +151,8 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         request: Request,
         h: ResponseToolkit
       ) => {
-        debug("incoming message from SSI agent", request.payload)
-
         let { initially, ws, ctx } = request.websocket()
+        debug("incoming message from SSI agent", initially, ctx, request.payload)
 
         const data = request.payload
         if (!data) {
@@ -181,17 +180,30 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
             established: true
           })
           debug(`New SSI Agent connected to channel ${ctx.ch.token.nonce}. Channel established.`)
+          const startMsg = ctx.ch.messages[0]
+          startMsg.resolve(startMsg)
           // FIXME this should just pass the token through the interaction
           // manager maybe? then return whatever is returned
-          return
+          return ''
         }
 
-        // FIXME TODO
-        //sdk.tokenReceived
+        // Past this point we know that this is an RPC response
+
+        const weGood = await sdk.tokenRecieved(data)
+        console.log('token processed successfully:', weGood)
+        const rpcResp = JolocomLib.parse.interactionToken.fromJWT(data)
+        const rpcInteraction = sdk.bemw.interactionManager.getInteraction(rpcResp.nonce)
+        const interactionTokens = rpcInteraction.getMessages() 
+
         // find msg by id somehow
-        // maybe msg id should be nonce of created RPC request?
-        // proxy resp from wallet to browser/client
-        ch.rpcWS.send(data.toString())
+        const msg = ch.messages[interactionTokens[0].nonce]
+
+        // resolve this message
+        msg.resolve({
+          id: msg.id,
+          request: msg,
+          response: interactionTokens[1].payload
+        })
       },
     })
 
@@ -232,29 +244,25 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         request: Request,
         h: ResponseToolkit
       ) => { /**/
-        const { initially, mode, ctx } = request.websocket()
+        const { initially, mode, ctx, ws } = request.websocket()
         const params = request.params || {}
-        debug('handle front for chan', params.nonce)
+        let ch
+        debug('handle front for chan', params.nonce, 'mode', mode, 'ctx', ctx)
 
         if (mode === 'websocket') {
-          // NOTE nested 'if (initially) { .. }' to avoid condition of intially=false triggering
-          // the else clause
+          debug('websocket request, initially', initially, 'chan', ctx.ch)
+
           if (!params.nonce) {
             return Boom.badRequest('missing session nonce')
           }
 
           try {
-            if (initially) {
+            ch = peerMap.getChannel(params.nonce)
+            if (!ch.rpcWS) {
               // if this is an initial request, we find the channel and update it with our current open
               // websocket which is the 'authenticated' frontend socket
               // 'authenticated' because of usage of the nonce of course
-              ctx.ch = peerMap.updateChannel(params.nonce, {
-                rpcWS: ctx.ws
-              })
-            } else if (!ctx.ch) {
-              // If the connection context doesn't already have an associated
-              // channel then we try to find it
-              ctx.ch = peerMap.getChannel(params.nonce)
+              ch.rpcWS = ws
             }
           } catch (err) {
             return Boom.badRequest(err.toString())
@@ -266,18 +274,11 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
             return Boom.badRequest('not supported')
           }
           debug('awaiting createChannel')
-          const ch = await peerMap.createChannel(sdk)
+          ch = await peerMap.createChannel(sdk)
           const chJSON = peerMap.getChannelJSON(ch)
           debug('channel json', chJSON)
           return chJSON
         } 
-
-        if (!ctx.ch.ssiWS) {
-          return Boom.badRequest('no SSI agent connected yet')
-        }
-
-        // Past this point we know that this is a request on an established
-        // channel accessible through ctx.ch, and there's a connected SSI Agent
 
         // All incoming messages on the frontend WebSocket are expected to be
         // RPC calls in a simple JSON format
@@ -289,29 +290,53 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
           return
         }
 
-        // TODO create rpc request
-        let ssiRPC
-        if (msg.rpc == 'asymEncrypt') {
-          ssiRPC = await sdk.rpcEncRequest({
-          toEncrypt: Buffer.from(msg.request),
-            target: '#key-1',
-            callbackURL: ''
-          })
-        } else if (msg.rpc == 'asymDecrypt') {
-          ssiRPC = await sdk.rpcDecRequest({
-            toDecrypt: Buffer.from(msg.request),
-            callbackURL: ''
-          })
-        }
+        if (msg.rpc == 'start') {
+          ch.messages[0] = msg
+        } else {
+          if (!ch.ssiWS) {
+            return Boom.badRequest('no SSI agent connected yet')
+          }
+          let ssiRPC
 
-        ctx.ch.ssiWS.send(ssiRPC)
+          // Past this point we know that this is a request on an established
+          // channel accessible through ch, and there's a connected SSI Agent
+
+          try {
+            if (msg.rpc == 'asymEncrypt') {
+              ssiRPC = await sdk.rpcEncRequest({
+                toEncrypt: Buffer.from(msg.request),
+                target: '#key-1',
+                callbackURL: ''
+              })
+            } else if (msg.rpc == 'asymDecrypt') {
+              ssiRPC = await sdk.rpcDecRequest({
+                toDecrypt: Buffer.from(msg.request),
+                callbackURL: ''
+              })
+            }
+          } catch (err) {
+            debug('failed to create RPC token', err)
+            throw err
+          }
+
+          let rpcToken
+          try {
+            rpcToken = JolocomLib.parse.interactionToken.fromJWT(ssiRPC)
+          } catch (err) {
+            debug('failed to reparse RPC token', ssiRPC)
+            throw err
+          }
+
+          ch.messages[rpcToken.nonce] = msg
+
+          ch.ssiWS.send(ssiRPC)
+        }
 
         return new Promise(resolve => {
           // we postpone this request's resolution until the SSI agent
           // responds
           msg.resolve = resolve
-          ctx.ch.messages[msg.id] = msg
-        })
+        }).then(response => JSON.stringify(response))
 
       /**/ }
     })
