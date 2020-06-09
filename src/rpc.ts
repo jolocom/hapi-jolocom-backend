@@ -110,7 +110,7 @@ const peerMap = new PeerMap()
 
 const authRequestToken = async (sdk: JolocomSDK, callbackURL: string) => {
   return sdk.idw.create.interactionTokens.request.auth({
-    callbackURL
+    callbackURL, description: callbackURL
   }, await sdk.bemw.keyChainLib.getPassword())
 }
 
