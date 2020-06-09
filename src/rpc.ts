@@ -24,10 +24,20 @@ type PluginOptions = {
 // FIXME this is not a channel, it's a session
 type ChannelState = {
     // TODO rename to authRequest?
-    // FIXME set proper type instead of relying on ReturnType
-    token: ReturnType<sdk.idw.create.interactionTokens.request.auth>
+    // FIXME set proper type
+    token: any
+    jwt?: string
+    nonce?: string
     rpcWS?: WebSocket
     ssiWS?: WebSocket
+    paths?: {
+      rpcWS: string,
+      ssiWS: string
+    }
+    urls?: {
+      rpcWS: string,
+      ssiWS: string
+    }
     established?: boolean
     messages: {[id: string]: any}
 }
@@ -42,11 +52,11 @@ class PeerMap {
     if (!ch) throw new Error('channel not found!')
     return ch
   }
-  public getChannelJSON = (ch: ChannelState, relayPath: string): ChannelState => {
+  public getChannelJSON = (ch: ChannelState) => {
     return {
       jwt: ch.token.encode(),
       nonce: ch.token.nonce,
-      rpcWS: ch.rpcWS
+      paths: ch.paths
     }
   }
 
@@ -58,22 +68,35 @@ class PeerMap {
   // This is partial because of the messages field
   public updateChannel = (id: string, update: Partial<ChannelState>) => {
     const ch = this.getChannel(id)
-    newCh = this.peerMap[id] = {
+    return this.peerMap[id] = {
       ...ch,
       ...update
     }
-    return newCh
   }
 
   // FIXME rename to createChannelRelay? or something
   public createChannel = async (sdk: JolocomSDK) => {
-    const rpcWS = `${PUBLIC_WS_URL}/rpcProxy` // FIXME compute
-    const token = await authRequestToken(sdk, rpcWS)
+    const paths = {
+      ssiWS: '/rpcProxy/ssi', // FIXME compute
+      rpcWS: null
+    }
+    const urls = {
+      ssiWS: `${PUBLIC_WS_URL}${paths.ssiWS}`,
+      rpcWS: null
+    }
+
+    const token = await authRequestToken(sdk, urls.ssiWS)
+
+    paths.rpcWS = `/rpcProxy/${token.nonce}`
+    urls.rpcWS = `${PUBLIC_WS_URL}${paths.rpcWS}`
+
     // FIXME add QR code also!
     const ch = {
       token: token,
-      rpcWS,
+      paths,
+      urls,
       id: token.nonce,
+      messages: {}
       // FIXME add info about connected peers in a more structure manner than
       // just `rpcWS` and `ssiWS`?
     }
@@ -109,7 +132,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
       method: 'POST', path: '/ssi',
       config: {
         // payloads are expedted to be JWT, and maybe FIXME auto parse
-        payload: { output: 'data', parse: true, allow: 'text/plain' },
+        // payload: { output: 'data', parse: true },
         plugins: {
           websocket: {
             only: true,
@@ -127,7 +150,7 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
         request: Request,
         h: ResponseToolkit
       ) => {
-        debug("incoming message from SSI agent")
+        debug("incoming message from SSI agent", request.payload)
 
         let { initially, ws, ctx } = request.websocket()
 
@@ -149,13 +172,14 @@ export const rpcProxyPlugin: Plugin<PluginOptions> = {
 
           // FIXME TODO does this throw if invalid?
           // FIXME Boom error handling
+          // @ts-ignore
           await sdk.idw.validateJWT(authResp, authReq)
 
-          const newCh = ctx.ch = peerMap.updateChannel(ch.token.nonce, {
+          ctx.ch = peerMap.updateChannel(ch.token.nonce, {
             ssiWS: ws,
             established: true
           })
-          debug(`New SSI Agent connected to channel ${newCh.token.nonce}. Channel established.`)
+          debug(`New SSI Agent connected to channel ${ctx.ch.token.nonce}. Channel established.`)
           // FIXME this should just pass the token through the interaction
           // manager maybe? then return whatever is returned
           return
