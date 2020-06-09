@@ -296,6 +296,11 @@
     "@hapi/bourne" "1.x.x"
     "@hapi/hoek" "8.x.x"
 
+"@jolocom/sdk-password-store-filesystem@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@jolocom/sdk-password-store-filesystem/-/sdk-password-store-filesystem-0.1.0.tgz#4b9053ef57aa63db1a548a060a7f93a7a2b2b79c"
+  integrity sha512-j8sKmOUKQvUQMqFzMm9Yv5oqiJuikm7GaHU4gMa2mVPQcpoX7oGP7Sfgt2PkYK+Z8myRtqU5qb8Y6OKOJBvFug==
+
 "@jolocom/sdk-storage-typeorm@^1.1.0":
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/@jolocom/sdk-storage-typeorm/-/sdk-storage-typeorm-1.1.0.tgz#79682411ef275bf1937aa95ac35ac8bd5182d1fa"
@@ -303,10 +308,10 @@
   dependencies:
     class-transformer "^0.2.3"
 
-"@jolocom/sdk@^0.9.1":
-  version "0.9.1"
-  resolved "https://registry.yarnpkg.com/@jolocom/sdk/-/sdk-0.9.1.tgz#870f4d9cc55ff97349881bb2731948924d652c3f"
-  integrity sha512-7fEI26mP8eAXdjCBdFZZcWuKJJ+B4HUD1WuVboQEcTOpG0vt9+Auob9l2ykleZjT3Icc2+uGmy8W1MiZ/lzvSQ==
+"@jolocom/sdk@^0.9.4":
+  version "0.9.4"
+  resolved "https://registry.yarnpkg.com/@jolocom/sdk/-/sdk-0.9.4.tgz#1c7931b727a310847c1b04b55db1afa20430b6e1"
+  integrity sha512-oQvtAFTO1xyBraY1E+pwo/p+YTnXkFy1ewSKwtmFDE3udM4aRicd6fOMPgbXIE3fDMvwHY8dBdt6HHWwhxDtYA==
   dependencies:
     assert "^2.0.0"
     bip39 "^3.0.2"
@@ -317,7 +322,7 @@
     events "^3.0.0"
     form-data "^3.0.0"
     i18n-js "^3.1.0"
-    jolocom-lib "^4.2.9"
+    jolocom-lib "^4.3.1"
     ramda "^0.26.1"
     sjcl "^1.0.7"
     sqlite3 "^4.0.0"
@@ -1430,7 +1435,7 @@ ecc-jsbn@~0.1.1:
     jsbn "~0.1.0"
     safer-buffer "^2.1.0"
 
-eccrypto@rootstock/eccrypto#485e11f163093fb6e0d5263fa46ed5075dedfe88:
+"eccrypto@github:rootstock/eccrypto#485e11f163093fb6e0d5263fa46ed5075dedfe88":
   version "1.1.2"
   resolved "https://codeload.github.com/rootstock/eccrypto/tar.gz/485e11f163093fb6e0d5263fa46ed5075dedfe88"
   dependencies:
@@ -2523,38 +2528,10 @@ isurl@^1.0.0-alpha5:
     has-to-string-tag-x "^1.2.0"
     is-object "^1.0.1"
 
-jolocom-lib@^4.2.8:
-  version "4.2.8"
-  resolved "https://registry.yarnpkg.com/jolocom-lib/-/jolocom-lib-4.2.8.tgz#e6d8a410fbc138a1a28f7733dc377e0d41f0434a"
-  integrity sha512-g8d3oICHkgJMGGrETFV/wfJNCVK6D0ODvcVjl19ncZJVnTmZPKRFJ7QrMSC3DYSeTsho2/Owd2/dwxxA813dCQ==
-  dependencies:
-    base64url "^3.0.1"
-    bip32 "^1.0.2"
-    bip39 "^3.0.1"
-    class-transformer "^0.1.10"
-    create-hash "^1.2.0"
-    cred-types-jolocom-core "^0.0.11"
-    detect-node "^2.0.4"
-    eccrypto rootstock/eccrypto#485e11f163093fb6e0d5263fa46ed5075dedfe88
-    ethereumjs-tx "^1.3.7"
-    ethereumjs-util "^6.1.0"
-    ethers "^4.0.27"
-    form-data "^2.3.3"
-    jolocom-registry-contract "^0.1.7"
-    json-logic-js "^1.2.2"
-    jsonld "^1.5.3"
-    jsontokens "^1.0.0"
-    node-fetch "^2.3.0"
-    qrcode "^1.3.3"
-    reflect-metadata "^0.1.13"
-    secrets.js-grempe "^1.1.0"
-    sinon-chai "^3.3.0"
-    tiny-secp256k1 "^1.0.1"
-
-jolocom-lib@^4.2.9:
-  version "4.2.9"
-  resolved "https://registry.yarnpkg.com/jolocom-lib/-/jolocom-lib-4.2.9.tgz#9a008d7c72184ce192982d5c826722b16fcba1e3"
-  integrity sha512-XEyd6KLM/vFSWwRhcd9oKe1Q97EWnewCxOu18qC9et5SNv3VuwCior4PvllI4gtf57Tan0XTgtjrnBIJnieygw==
+jolocom-lib@^4.3.1:
+  version "4.3.1"
+  resolved "https://registry.yarnpkg.com/jolocom-lib/-/jolocom-lib-4.3.1.tgz#4235d224a13635c3370618d44aa65e86642b7e72"
+  integrity sha512-07Pl5IEXjTCGkvmR/ci9dLiKBH/f/wHlJ/UoNBfraSIxX7uhqcFJUT6HGpxlS2ZFNaNxAn1j3HMpv4PkUsp79A==
   dependencies:
     base64url "^3.0.1"
     bip32 "^1.0.2"

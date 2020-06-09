@@ -1,6 +1,7 @@
 import * as hapi from '@hapi/hapi'
 import * as HAPIWebSocket from 'hapi-plugin-websocket'
-import { FilePasswordStore, JolocomSDK } from "@jolocom/sdk"
+import { JolocomSDK } from "@jolocom/sdk"
+import { FilePasswordStore } from "@jolocom/sdk-password-store-filesystem"
 import { JolocomTypeormStorage } from "@jolocom/sdk-storage-typeorm"
 import { rpcProxyPlugin } from './rpc'
 import { createServer } from 'http'
