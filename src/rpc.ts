@@ -1,4 +1,5 @@
 import { Plugin, Server, Request, ResponseToolkit } from '@hapi/hapi'
+import * as Boom from '@hapi/boom'
 import { JolocomSDK } from '@jolocom/sdk'
 import { JolocomLib } from 'jolocom-lib'
 //@ts-ignore WebSocket is not exported
