@@ -11,3 +11,5 @@ yarn-error.log*
 *.tsbuildinfo
 .npm
 .eslintcache
+db.sqlite3
+password.txt
